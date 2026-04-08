@@ -1,0 +1,23 @@
+---
+- name: Preparar todos os nós (Java, utilitários)
+  hosts: all
+  become: yes
+  roles:
+    - role: common
+      tags: ['common', 'setup']
+
+- name: Provisionar Hadoop (HDFS e YARN) e Hive Metastore
+  hosts: hadoop_nodes
+  become: yes
+  roles:
+    - role: hadoop
+      tags: ['hadoop', 'hdfs', 'yarn']
+    - role: hive
+      tags: ['hive', 'metastore']
+
+- name: Provisionar Trino Engine
+  hosts: trino_nodes
+  become: yes
+  roles:
+    - role: trino
+      tags: ['trino', 'query_engine']

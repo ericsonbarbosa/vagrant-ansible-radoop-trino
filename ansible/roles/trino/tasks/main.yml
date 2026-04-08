@@ -1,0 +1,52 @@
+---
+- name: Baixar binários do Trino
+  get_url:
+    url: "{{ trino_mirror }}"
+    dest: "/tmp/trino-{{ trino_version }}.tar.gz"
+
+- name: Descompactar Trino
+  unarchive:
+    src: "/tmp/trino-{{ trino_version }}.tar.gz"
+    dest: "{{ install_dir }}"
+    remote_src: yes
+    creates: "{{ install_dir }}/trino-server-{{ trino_version }}"
+
+- name: Criar link simbólico para o Trino
+  file:
+    src: "{{ install_dir }}/trino-server-{{ trino_version }}"
+    dest: "{{ install_dir }}/trino"
+    state: link
+
+- name: Criar diretório de dados do Trino
+  file:
+    path: "{{ data_dir }}"
+    state: directory
+    owner: vagrant
+
+- name: Criar diretório de catálogos
+  file:
+    path: "{{ install_dir }}/trino/etc/catalog"
+    state: directory
+
+- name: Configurar arquivos principais do Trino
+  template:
+    src: "{{ item }}.j2"
+    dest: "{{ install_dir }}/trino/etc/{{ item }}"
+  loop:
+    - node.properties
+    - jvm.config
+    - config.properties
+
+- name: Configurar conector Hive no Trino
+  template:
+    src: catalog/hive.properties.j2
+    dest: "{{ install_dir }}/trino/etc/catalog/hive.properties"
+
+- name: Adicionar Trino ao PATH
+  lineinfile:
+    path: /home/vagrant/.bashrc
+    line: 'export PATH=$PATH:{{ install_dir }}/trino/bin'
+
+- name: Iniciar o serviço do Trino
+  shell: "{{ install_dir }}/trino/bin/launcher start"
+  become_user: vagrant

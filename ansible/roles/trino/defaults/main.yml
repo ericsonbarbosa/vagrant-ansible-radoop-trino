@@ -1,0 +1,5 @@
+---
+trino_version: "442" # Versão estável (requer Java 17 ou 21)
+trino_mirror: "https://repo1.maven.org/maven2/io/trino/trino-server/{{ trino_version }}/trino-server-{{ trino_version }}.tar.gz"
+install_dir: "/opt"
+data_dir: "/var/lib/trino/data"

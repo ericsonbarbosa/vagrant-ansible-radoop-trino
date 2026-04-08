@@ -1,0 +1,26 @@
+---
+- name: Atualizar cache do apt
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Instalar Java e dependências essenciais
+  apt:
+    name:
+      - openjdk-11-jdk
+      - curl
+      - wget
+      - rsync
+      - unzip
+    state: present
+
+- name: Garantir que o grupo vagrant existe
+  group:
+    name: vagrant
+    state: present
+
+- name: Garantir que o usuário vagrant está no grupo
+  user:
+    name: vagrant
+    groups: vagrant
+    append: yes

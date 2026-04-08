@@ -1,0 +1,38 @@
+---
+- name: Baixar binários do Apache Hive
+  get_url:
+    url: "{{ hive_mirror }}"
+    dest: "/tmp/apache-hive-{{ hive_version }}-bin.tar.gz"
+    timeout: 300
+
+- name: Descompactar Hive no diretório de instalação
+  unarchive:
+    src: "/tmp/apache-hive-{{ hive_version }}-bin.tar.gz"
+    dest: "{{ install_dir }}"
+    remote_src: yes
+    creates: "{{ install_dir }}/apache-hive-{{ hive_version }}-bin"
+
+- name: Criar link simbólico para o Hive
+  file:
+    src: "{{ install_dir }}/apache-hive-{{ hive_version }}-bin"
+    dest: "{{ install_dir }}/hive"
+    state: link
+
+- name: Configurar template do Hive (hive-site.xml)
+  template:
+    src: hive-site.xml.j2
+    dest: "{{ install_dir }}/hive/conf/hive-site.xml"
+
+- name: Resolver conflito de bibliotecas Guava (Hadoop vs Hive)
+  shell: |
+    rm -f {{ install_dir }}/hive/lib/guava-*.jar
+    cp {{ install_dir }}/hadoop/share/hadoop/common/lib/guava-*.jar {{ install_dir }}/hive/lib/
+  args:
+    removes: "{{ install_dir }}/hive/lib/guava-19.0.jar" # Exemplo de versão antiga comum
+
+- name: Inicializar o Schema do Hive Metastore (Derby)
+  shell: "{{ install_dir }}/hive/bin/schematool -dbType derby -initSchema"
+  args:
+    chdir: "{{ install_dir }}/hive"
+    creates: "{{ install_dir }}/hive/metastore_db"
+  become_user: vagrant
