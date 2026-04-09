@@ -1,9 +1,23 @@
 ---
-- name: Baixar binários do Apache Hive
-  get_url:
-    url: "{{ hive_mirror }}"
+- name: Verificar se o binário do Hive existe localmente
+  delegate_to: localhost
+  become: no
+  stat:
+    path: "{{ role_path }}/files/apache-hive-{{ hive_version }}-bin.tar.gz"
+  register: hive_file
+
+- name: Validar existência do arquivo
+  fail:
+    msg: "ERRO: Arquivo não encontrado em {{ role_path }}/files/"
+  when: not hive_file.stat.exists
+
+- name: Enviar binários do Apache Hive para a VM
+  copy:
+    src: "apache-hive-{{ hive_version }}-bin.tar.gz"
     dest: "/tmp/apache-hive-{{ hive_version }}-bin.tar.gz"
-    timeout: 300
+    owner: vagrant
+    group: vagrant
+    mode: '0644'
 
 - name: Descompactar Hive no diretório de instalação
   unarchive:

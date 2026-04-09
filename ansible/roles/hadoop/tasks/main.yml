@@ -1,4 +1,5 @@
 ---
+# 1. VERIFICAÇÃO E DOWNLOAD
 - name: Verificar se o Hadoop já está instalado
   stat:
     path: "{{ install_dir }}/hadoop-{{ hadoop_version }}"
@@ -18,28 +19,28 @@
     remote_src: yes
   when: not hadoop_installed.stat.exists
 
+# 2. PERMISSÕES
 - name: Criar link simbólico para o Hadoop
   file:
     src: "{{ install_dir }}/hadoop-{{ hadoop_version }}"
     dest: "{{ install_dir }}/hadoop"
     state: link
 
-- name: Descobrir o caminho real do JAVA_HOME
-  shell: "readlink -f /usr/bin/java | sed 's:/bin/java::'"
-  register: java_path_cmd
-  changed_when: false
+- name: Ajustar dono da pasta do Hadoop para o usuário vagrant
+  file:
+    path: "{{ install_dir }}/hadoop-{{ hadoop_version }}"
+    owner: vagrant
+    group: vagrant
+    recurse: yes
 
-- name: Definir variável java_home
-  set_fact:
-    real_java_home: "{{ java_path_cmd.stdout }}"
-
-- name: Configurar JAVA_HOME dentro do hadoop-env.sh
+# 3. CONFIGURAÇÃO DE AMBIENTE
+- name: Fixar JAVA_HOME no hadoop-env.sh (Início do arquivo)
   lineinfile:
     path: "{{ install_dir }}/hadoop/etc/hadoop/hadoop-env.sh"
-    regexp: '^# export JAVA_HOME='
-    line: "export JAVA_HOME={{ real_java_home }}"
+    insertbefore: BOF
+    line: "export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64"
 
-- name: Configurar templates do Hadoop (core-site e hdfs-site)
+- name: Configurar templates do Hadoop
   template:
     src: "{{ item }}.j2"
     dest: "{{ install_dir }}/hadoop/etc/hadoop/{{ item }}"
@@ -47,38 +48,46 @@
     - core-site.xml
     - hdfs-site.xml
 
-- name: Adicionar Hadoop ao PATH no .bashrc
-  blockinfile:
-    path: /home/vagrant/.bashrc
-    block: |
-      export HADOOP_HOME={{ install_dir }}/hadoop
-      export JAVA_HOME={{ real_java_home }}
-      export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
-
-- name: Criar diretórios de dados do Hadoop
+# 4. DIRETÓRIOS E FORMATAÇÃO
+- name: Criar diretórios de dados
   file:
     path: "{{ item }}"
     state: directory
     owner: vagrant
     group: vagrant
     mode: '0755'
-    recurse: yes
   loop:
     - /opt/hadoop/data/namenode
     - /opt/hadoop/data/datanode
 
-- name: Formatar NameNode (apenas se não houver dados)
-  shell: "{{ install_dir }}/hadoop/bin/hdfs namenode -format -nonInteractive"
+# COMENTE OU DELETE ESTA TAREFA:
+#- name: Limpar dados antigos para evitar conflitos
+#  file:
+#    path: "/opt/hadoop/data/namenode/current"
+#    state: absent
+
+- name: Formatar NameNode
+  shell: |
+    export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+    export HADOOP_HOME={{ install_dir }}/hadoop
+    export LD_LIBRARY_PATH=$JAVA_HOME/lib/server:$LD_LIBRARY_PATH
+    $HADOOP_HOME/bin/hdfs namenode -format -nonInteractive
   args:
+    # O Ansible só roda esse comando se este arquivo/pasta NÃO existir
     creates: "/opt/hadoop/data/namenode/current"
-  environment:
-    JAVA_HOME: "{{ real_java_home }}"
-    HADOOP_HOME: "{{ install_dir }}/hadoop"
   become_user: vagrant
 
+# 5. INICIALIZAÇÃO
 - name: Iniciar serviços do HDFS
-  shell: "{{ install_dir }}/hadoop/sbin/start-dfs.sh"
+  shell: |
+    export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+    export HADOOP_HOME={{ install_dir }}/hadoop
+    export LD_LIBRARY_PATH=$JAVA_HOME/lib/server:$LD_LIBRARY_PATH
+    export PATH=$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$JAVA_HOME/bin:$PATH
+    
+    $HADOOP_HOME/sbin/start-dfs.sh
+  args:
+    # O Ansible só executará o shell acima se este arquivo NÃO existir.
+    # Se o arquivo existir, ele pula a tarefa e retorna "OK" (verde).
+    creates: "/tmp/hadoop-vagrant-namenode.pid"
   become_user: vagrant
-  environment:
-    JAVA_HOME: "{{ real_java_home }}"
-    HADOOP_HOME: "{{ install_dir }}/hadoop"
