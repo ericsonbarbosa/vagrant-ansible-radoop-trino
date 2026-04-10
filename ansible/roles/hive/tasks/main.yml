@@ -1,52 +1,102 @@
 ---
-- name: Verificar se o binário do Hive existe localmente
+# ==============================================================================
+# 1. PREPARAÇÃO E BINÁRIOS
+# ==============================================================================
+
+- name: "hive : Verificar se o binário do Hive existe localmente"
   delegate_to: localhost
   become: no
   stat:
     path: "{{ role_path }}/files/apache-hive-{{ hive_version }}-bin.tar.gz"
   register: hive_file
 
-- name: Validar existência do arquivo
+- name: "hive : Validar existência do arquivo"
   fail:
     msg: "ERRO: Arquivo não encontrado em {{ role_path }}/files/"
   when: not hive_file.stat.exists
 
-- name: Enviar binários do Apache Hive para a VM
+- name: "hive : Enviar binários do Apache Hive para a VM"
   copy:
     src: "apache-hive-{{ hive_version }}-bin.tar.gz"
     dest: "/tmp/apache-hive-{{ hive_version }}-bin.tar.gz"
     owner: vagrant
     group: vagrant
     mode: '0644'
+    force: no
 
-- name: Descompactar Hive no diretório de instalação
+- name: "hive : Descompactar Apache Hive"
   unarchive:
     src: "/tmp/apache-hive-{{ hive_version }}-bin.tar.gz"
     dest: "{{ install_dir }}"
     remote_src: yes
-    creates: "{{ install_dir }}/apache-hive-{{ hive_version }}-bin"
+    owner: vagrant
+    group: vagrant
+    creates: "{{ install_dir }}/apache-hive-{{ hive_version }}-bin/bin/hive"
 
-- name: Criar link simbólico para o Hive
+- name: "hive : Criar link simbólico"
   file:
     src: "{{ install_dir }}/apache-hive-{{ hive_version }}-bin"
     dest: "{{ install_dir }}/hive"
     state: link
 
-- name: Configurar template do Hive (hive-site.xml)
+# ==============================================================================
+# 2. COMPATIBILIDADE E PERMISSÕES (O Pulo do Gato)
+# ==============================================================================
+
+- name: "hive : Remover biblioteca Guava incompatível"
+  file:
+    path: "{{ install_dir }}/hive/lib/guava-19.0.jar"
+    state: absent
+
+- name: "hive : Sincronizar biblioteca Guava do Hadoop"
+  shell: cp {{ install_dir }}/hadoop/share/hadoop/common/lib/guava-*.jar {{ install_dir }}/hive/lib/
+  args:
+    creates: "{{ install_dir }}/hive/lib/guava-27.0-jre.jar"
+
+- name: "hive : Ajustar dono da pasta recursivamente"
+  file:
+    path: "{{ install_dir }}/apache-hive-{{ hive_version }}-bin"
+    owner: vagrant
+    group: vagrant
+    state: directory
+    recurse: yes
+  become: yes
+
+# ==============================================================================
+# 3. INTEGRAÇÃO COM HDFS (A parte que faltava)
+# ==============================================================================
+
+- name: "hive : Criar estrutura de diretórios no HDFS"
+  shell: |
+    export PATH=$PATH:{{ install_dir }}/hadoop/bin
+    hdfs dfs -mkdir -p /tmp
+    hdfs dfs -mkdir -p /user/hive/warehouse
+    hdfs dfs -chmod g+w /tmp
+    hdfs dfs -chmod g+w /user/hive/warehouse
+  become_user: vagrant
+  register: hdfs_res
+  changed_when: "'already exists' not in hdfs_res.stderr"
+  # O ignore_errors ajuda se o HDFS estiver em Safe Mode por alguns segundos
+  ignore_errors: yes
+
+# ==============================================================================
+# 4. CONFIGURAÇÃO E SCHEMA
+# ==============================================================================
+
+- name: "hive : Configurar hive-site.xml"
   template:
     src: hive-site.xml.j2
     dest: "{{ install_dir }}/hive/conf/hive-site.xml"
+    owner: vagrant
+    group: vagrant
 
-- name: Resolver conflito de bibliotecas Guava (Hadoop vs Hive)
+- name: "hive : Inicializar o Schema do Metastore (Derby)"
   shell: |
-    rm -f {{ install_dir }}/hive/lib/guava-*.jar
-    cp {{ install_dir }}/hadoop/share/hadoop/common/lib/guava-*.jar {{ install_dir }}/hive/lib/
+    export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+    export HADOOP_HOME={{ install_dir }}/hadoop
+    export HIVE_HOME={{ install_dir }}/hive
+    export PATH=$HIVE_HOME/bin:$HADOOP_HOME/bin:$PATH
+    cd {{ install_dir }}/hive && schematool -dbType derby -initSchema
   args:
-    removes: "{{ install_dir }}/hive/lib/guava-19.0.jar" # Exemplo de versão antiga comum
-
-- name: Inicializar o Schema do Hive Metastore (Derby)
-  shell: "{{ install_dir }}/hive/bin/schematool -dbType derby -initSchema"
-  args:
-    chdir: "{{ install_dir }}/hive"
     creates: "{{ install_dir }}/hive/metastore_db"
   become_user: vagrant

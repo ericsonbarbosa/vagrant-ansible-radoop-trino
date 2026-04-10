@@ -1,55 +1,108 @@
 ---
+# ==============================================================================
 # 1. VERIFICAÇÃO E DOWNLOAD
-- name: Verificar se o Hadoop já está instalado
+# ==============================================================================
+
+- name: "hadoop : Verificar se o Hadoop já está instalado"
   stat:
     path: "{{ install_dir }}/hadoop-{{ hadoop_version }}"
   register: hadoop_installed
 
-- name: Baixar binários do Apache Hadoop
+- name: "hadoop : Baixar binários do Apache Hadoop"
   get_url:
     url: "{{ hadoop_mirror }}"
     dest: "/tmp/hadoop-{{ hadoop_version }}.tar.gz"
     timeout: 300
+    mode: '0644'
   when: not hadoop_installed.stat.exists
 
-- name: Descompactar Hadoop
+- name: "hadoop : Descompactar Hadoop"
   unarchive:
     src: "/tmp/hadoop-{{ hadoop_version }}.tar.gz"
     dest: "{{ install_dir }}"
     remote_src: yes
   when: not hadoop_installed.stat.exists
 
-# 2. PERMISSÕES
-- name: Criar link simbólico para o Hadoop
+# ==============================================================================
+# 2. PERMISSÕES E LINKS
+# ==============================================================================
+
+- name: "hadoop : Criar link simbólico para o Hadoop"
   file:
     src: "{{ install_dir }}/hadoop-{{ hadoop_version }}"
     dest: "{{ install_dir }}/hadoop"
     state: link
+  become: yes
 
-- name: Ajustar dono da pasta do Hadoop para o usuário vagrant
+- name: "hadoop : Ajustar dono da pasta do Hadoop de forma recursiva"
   file:
     path: "{{ install_dir }}/hadoop-{{ hadoop_version }}"
     owner: vagrant
     group: vagrant
     recurse: yes
+  become: yes
 
-# 3. CONFIGURAÇÃO DE AMBIENTE
-- name: Fixar JAVA_HOME no hadoop-env.sh (Início do arquivo)
+# ==============================================================================
+# 3. CONFIGURAÇÃO DE AMBIENTE E TEMPLATES
+# ==============================================================================
+
+- name: "hadoop : Fixar JAVA_HOME no hadoop-env.sh"
   lineinfile:
     path: "{{ install_dir }}/hadoop/etc/hadoop/hadoop-env.sh"
-    insertbefore: BOF
-    line: "export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64"
+    regexp: '^#? export JAVA_HOME='
+    line: 'export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64'
+  become: yes
 
-- name: Configurar templates do Hadoop
+- name: "hadoop : Configurar templates do Hadoop (XML)"
   template:
     src: "{{ item }}.j2"
     dest: "{{ install_dir }}/hadoop/etc/hadoop/{{ item }}"
+    owner: vagrant
+    group: vagrant
   loop:
     - core-site.xml
     - hdfs-site.xml
 
-# 4. DIRETÓRIOS E FORMATAÇÃO
-- name: Criar diretórios de dados
+# ==============================================================================
+# 4. CONFIGURAÇÃO DE SSH PASSWORDLESS
+# ==============================================================================
+
+- name: "hadoop : Gerar chave SSH para o usuário vagrant"
+  command: ssh-keygen -t rsa -P "" -f /home/vagrant/.ssh/id_rsa
+  args:
+    creates: /home/vagrant/.ssh/id_rsa
+  become_user: vagrant
+
+- name: "hadoop : Garantir permissões restritas na pasta .ssh"
+  file:
+    path: /home/vagrant/.ssh
+    state: directory
+    mode: '0700'
+    owner: vagrant
+    group: vagrant
+  become: yes
+
+- name: "hadoop : Ler a chave pública gerada na VM"
+  shell: cat /home/vagrant/.ssh/id_rsa.pub
+  register: public_key_content
+  changed_when: false
+
+- name: "hadoop : Autorizar a própria chave de forma segura"
+  authorized_key:
+    user: vagrant
+    state: present
+    key: "{{ public_key_content.stdout }}"
+  become: yes
+  
+- name: "hadoop : Adicionar localhost ao known_hosts"
+  shell: ssh-keyscan -H localhost > /home/vagrant/.ssh/known_hosts
+  become_user: vagrant
+
+# ==============================================================================
+# 5. DIRETÓRIOS E FORMATAÇÃO DO FILESYSTEM
+# ==============================================================================
+
+- name: "hadoop : Criar diretórios de dados"
   file:
     path: "{{ item }}"
     state: directory
@@ -60,34 +113,27 @@
     - /opt/hadoop/data/namenode
     - /opt/hadoop/data/datanode
 
-# COMENTE OU DELETE ESTA TAREFA:
-#- name: Limpar dados antigos para evitar conflitos
-#  file:
-#    path: "/opt/hadoop/data/namenode/current"
-#    state: absent
-
-- name: Formatar NameNode
+- name: "hadoop : Formatar NameNode"
   shell: |
     export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-    export HADOOP_HOME={{ install_dir }}/hadoop
-    export LD_LIBRARY_PATH=$JAVA_HOME/lib/server:$LD_LIBRARY_PATH
-    $HADOOP_HOME/bin/hdfs namenode -format -nonInteractive
+    {{ install_dir }}/hadoop/bin/hdfs namenode -format -nonInteractive
   args:
-    # O Ansible só roda esse comando se este arquivo/pasta NÃO existir
     creates: "/opt/hadoop/data/namenode/current"
   become_user: vagrant
 
-# 5. INICIALIZAÇÃO
-- name: Iniciar serviços do HDFS
+# ==============================================================================
+# 6. INICIALIZAÇÃO DOS SERVIÇOS
+# ==============================================================================
+
+- name: "hadoop : Verificar se NameNode está ativo via JPS"
+  command: jps
+  register: jps_output
+  changed_when: false
+  become_user: vagrant
+
+- name: "hadoop : Iniciar serviços do HDFS (start-dfs.sh)"
   shell: |
     export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-    export HADOOP_HOME={{ install_dir }}/hadoop
-    export LD_LIBRARY_PATH=$JAVA_HOME/lib/server:$LD_LIBRARY_PATH
-    export PATH=$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$JAVA_HOME/bin:$PATH
-    
-    $HADOOP_HOME/sbin/start-dfs.sh
-  args:
-    # O Ansible só executará o shell acima se este arquivo NÃO existir.
-    # Se o arquivo existir, ele pula a tarefa e retorna "OK" (verde).
-    creates: "/tmp/hadoop-vagrant-namenode.pid"
+    {{ install_dir }}/hadoop/sbin/start-dfs.sh
   become_user: vagrant
+  when: "'NameNode' not in jps_output.stdout"

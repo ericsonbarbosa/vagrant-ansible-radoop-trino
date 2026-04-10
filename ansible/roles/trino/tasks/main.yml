@@ -1,8 +1,15 @@
 ---
-- name: Baixar binários do Trino
+- name: "trino : Verificar se o Trino já está instalado"
+  stat:
+    path: "/opt/trino-server-{{ trino_version }}"
+  register: trino_installed
+
+- name: "trino : Baixar binários do Trino"
   get_url:
     url: "{{ trino_mirror }}"
     dest: "/tmp/trino-{{ trino_version }}.tar.gz"
+    mode: '0644'
+  when: not trino_installed.stat.exists
 
 - name: Descompactar Trino
   unarchive:
@@ -45,8 +52,17 @@
 - name: Adicionar Trino ao PATH
   lineinfile:
     path: /home/vagrant/.bashrc
+    regexp: '^export PATH=\$PATH:{{ install_dir }}/trino/bin'
     line: 'export PATH=$PATH:{{ install_dir }}/trino/bin'
+    state: present
+
+- name: Verificar se o Trino já está rodando
+  command: "{{ install_dir }}/trino/bin/launcher status"
+  register: trino_status
+  failed_when: false
+  changed_when: false
 
 - name: Iniciar o serviço do Trino
   shell: "{{ install_dir }}/trino/bin/launcher start"
   become_user: vagrant
+  when: "'Running as' not in trino_status.stdout"
