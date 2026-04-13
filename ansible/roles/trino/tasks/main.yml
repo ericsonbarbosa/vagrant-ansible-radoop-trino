@@ -1,4 +1,10 @@
 ---
+- name: Instalar Java 21 para o Trino
+  apt:
+    name: openjdk-21-jdk
+    state: present
+    update_cache: yes
+
 - name: "trino : Verificar se o Trino já está instalado"
   stat:
     path: "/opt/trino-server-{{ trino_version }}"
@@ -24,11 +30,35 @@
     dest: "{{ install_dir }}/trino"
     state: link
 
+- name: "trino : Criar diretório para configurações do Hadoop"
+  file:
+    path: /opt/hadoop/etc/hadoop
+    state: directory
+    owner: vagrant
+    recurse: yes
+
+- name: "trino : Copiar configurações do Hadoop para o Trino"
+  template:
+    src: "hadoop/{{ item }}.j2"
+    dest: "/opt/hadoop/etc/hadoop/{{ item }}"
+  loop:
+    - core-site.xml
+    - hdfs-site.xml
+
 - name: Criar diretório de dados do Trino
   file:
     path: "{{ data_dir }}"
     state: directory
     owner: vagrant
+    mode: '0755'
+
+# tarefa para garantir que o diretório de logs exista
+- name: Criar diretório de logs
+  file:
+    path: "{{ install_dir }}/trino/var/log"
+    state: directory
+    owner: vagrant
+    state: directory
 
 - name: Criar diretório de catálogos
   file:

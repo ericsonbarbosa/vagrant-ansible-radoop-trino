@@ -1,4 +1,10 @@
 coordinator=true
 node-scheduler.include-coordinator=true
 http-server.http.port=8080
-discovery.uri=http://{{ ansible_host }}:8080
+
+# Usar o IP da rede privada (eth1 no Vagrant) garante que o Hive o encontre
+discovery.uri=http://192.168.56.11:8080
+
+# Estas linhas para garantir que ele aceite conexões externas
+node.internal-address=192.168.56.11
+node.external-address=192.168.56.11

@@ -19,10 +19,11 @@ Vagrant.configure("2") do |config|
   # VM 2 - Trino
   config.vm.define "trino-node" do |trino|
     trino.vm.hostname = "trino-node"
-
+    trino.vm.network "forwarded_port", guest: 8080, host: 8080
+    
     trino.vm.provider "virtualbox" do |vb|
       vb.name = "trino-node"
-      vb.memory = 2048
+      vb.memory = 4096
       vb.cpus = 2
     end
 
