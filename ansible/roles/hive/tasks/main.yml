@@ -15,20 +15,10 @@
     msg: "ERRO: Arquivo não encontrado em {{ role_path }}/files/"
   when: not hive_file.stat.exists
 
-- name: "hive : Enviar binários do Apache Hive para a VM"
-  copy:
-    src: "apache-hive-{{ hive_version }}-bin.tar.gz"
-    dest: "/tmp/apache-hive-{{ hive_version }}-bin.tar.gz"
-    owner: vagrant
-    group: vagrant
-    mode: '0644'
-    force: no
-
-- name: "hive : Descompactar Apache Hive"
+- name: "hive : Enviar e descompactar Apache Hive"
   unarchive:
-    src: "/tmp/apache-hive-{{ hive_version }}-bin.tar.gz"
+    src: "apache-hive-{{ hive_version }}-bin.tar.gz"
     dest: "{{ install_dir }}"
-    remote_src: yes
     owner: vagrant
     group: vagrant
     creates: "{{ install_dir }}/apache-hive-{{ hive_version }}-bin/bin/hive"
@@ -40,16 +30,13 @@
     state: link
 
 # ==============================================================================
-# 2. COMPATIBILIDADE E PERMISSÕES (O Pulo do Gato)
+# 2. COMPATIBILIDADE E PERMISSÕES
 # ==============================================================================
 
-- name: "hive : Remover biblioteca Guava incompatível"
-  file:
-    path: "{{ install_dir }}/hive/lib/guava-19.0.jar"
-    state: absent
-
-- name: "hive : Sincronizar biblioteca Guava do Hadoop"
-  shell: cp {{ install_dir }}/hadoop/share/hadoop/common/lib/guava-*.jar {{ install_dir }}/hive/lib/
+- name: "hive : Corrigir incompatibilidade da biblioteca Guava"
+  shell: |
+    rm -f {{ install_dir }}/hive/lib/guava-19.0.jar
+    cp {{ install_dir }}/hadoop/share/hadoop/common/lib/guava-*.jar {{ install_dir }}/hive/lib/
   args:
     creates: "{{ install_dir }}/hive/lib/guava-27.0-jre.jar"
 
@@ -58,26 +45,28 @@
     path: "{{ install_dir }}/apache-hive-{{ hive_version }}-bin"
     owner: vagrant
     group: vagrant
-    state: directory
     recurse: yes
   become: yes
 
 # ==============================================================================
-# 3. INTEGRAÇÃO COM HDFS (A parte que faltava)
+# 3. INTEGRAÇÃO COM HDFS
 # ==============================================================================
+
+- name: "hive : Verificar se diretórios HDFS existem"
+  shell: "{{ install_dir }}/hadoop/bin/hdfs dfs -test -d /user/hive/warehouse"
+  register: hdfs_dir_exists
+  ignore_errors: yes
+  changed_when: false
+  become_user: vagrant
 
 - name: "hive : Criar estrutura de diretórios no HDFS"
   shell: |
-    export PATH=$PATH:{{ install_dir }}/hadoop/bin
-    hdfs dfs -mkdir -p /tmp
-    hdfs dfs -mkdir -p /user/hive/warehouse
-    hdfs dfs -chmod g+w /tmp
-    hdfs dfs -chmod g+w /user/hive/warehouse
+    {{ install_dir }}/hadoop/bin/hdfs dfs -mkdir -p /tmp
+    {{ install_dir }}/hadoop/bin/hdfs dfs -mkdir -p /user/hive/warehouse
+    {{ install_dir }}/hadoop/bin/hdfs dfs -chmod g+w /tmp
+    {{ install_dir }}/hadoop/bin/hdfs dfs -chmod g+w /user/hive/warehouse
   become_user: vagrant
-  register: hdfs_res
-  changed_when: "'already exists' not in hdfs_res.stderr"
-  # O ignore_errors ajuda se o HDFS estiver em Safe Mode por alguns segundos
-  ignore_errors: yes
+  when: hdfs_dir_exists.rc != 0
 
 # ==============================================================================
 # 4. CONFIGURAÇÃO E SCHEMA
@@ -90,13 +79,96 @@
     owner: vagrant
     group: vagrant
 
-- name: "hive : Inicializar o Schema do Metastore (Derby)"
+- name: "hive : Configurar Memória e JAVA_HOME no hive-env.sh"
+  lineinfile:
+    path: "{{ install_dir }}/hive/conf/hive-env.sh"
+    line: "{{ item }}"
+    create: yes
+    owner: vagrant
+    group: vagrant
+  with_items:
+    - "export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64"
+    - "export HADOOP_HEAPSIZE=1024"
+
+# ==============================================================================
+# PERMISSÕES E INICIALIZAÇÃO DO METASTORE
+# ==============================================================================
+
+- name: "hive : Ajustar dono da pasta do Hive de forma recursiva"
+  file:
+    path: "{{ install_dir }}/apache-hive-3.1.3-bin" # ou a variável que você usa para a pasta descompactada
+    owner: vagrant
+    group: vagrant
+    recurse: yes
+  become: yes
+
+- name: "hive : Garantir permissões na pasta raiz do Hive"
+  file:
+    path: "{{ install_dir }}/hive"
+    owner: vagrant
+    group: vagrant
+    state: directory
+  become: yes
+
+- name: "hive : Inicializar o Schema do Metastore"
   shell: |
-    export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-    export HADOOP_HOME={{ install_dir }}/hadoop
-    export HIVE_HOME={{ install_dir }}/hive
-    export PATH=$HIVE_HOME/bin:$HADOOP_HOME/bin:$PATH
-    cd {{ install_dir }}/hive && schematool -dbType derby -initSchema
+    /opt/hive/bin/schematool -dbType derby -initSchema
+  environment:
+    JAVA_HOME: "/usr/lib/jvm/java-11-openjdk-amd64"
+    HADOOP_HOME: "/opt/hadoop"
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/hadoop/bin"
   args:
-    creates: "{{ install_dir }}/hive/metastore_db"
+    creates: "/opt/hive/metastore_db"  # A mágica da idempotência: só roda se não existir
+  become: yes
   become_user: vagrant
+
+# ==============================================================================
+# 5. AMBIENTE GLOBAL (Resolve o 'beeline: command not found')
+# ==============================================================================
+
+- name: "hive : Adicionar Hive ao PATH global"
+  copy:
+    dest: /etc/profile.d/hive_path.sh
+    content: |
+      export HIVE_HOME={{ install_dir }}/hive
+      export PATH=$PATH:$HIVE_HOME/bin
+    mode: '0644'
+  become: yes
+
+# ==============================================================================
+# 6. SERVIÇOS SYSTEMD (Metastore e HiveServer2)
+# ==============================================================================
+
+- name: "hive : Criar arquivo de serviço para Hive Metastore"
+  template:
+    src: hive-metastore.service.j2
+    dest: /etc/systemd/system/hive-metastore.service
+  become: yes
+
+- name: "hive : Iniciar e habilitar Hive Metastore"
+  systemd:
+    name: hive-metastore
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  become: yes
+
+- name: "hive : Aguardar Metastore abrir a porta 9083"
+  wait_for:
+    port: 9083
+    delay: 5
+    timeout: 120 # Dá um tempo pro Java acordar e criar o Derby
+
+- name: "hive : Criar arquivo de serviço para HiveServer2"
+  template:
+    src: hive-server2.service.j2
+    dest: /etc/systemd/system/hive-server2.service
+  become: yes
+
+- name: "hive : Iniciar e habilitar HiveServer2"
+  systemd:
+    name: hive-server2
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  become: yes

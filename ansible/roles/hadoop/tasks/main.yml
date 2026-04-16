@@ -1,6 +1,6 @@
 ---
 # ==============================================================================
-# 1. VERIFICAÇÃO E DOWNLOAD
+# 1. INSTALAÇÃO E ESTRUTURA BÁSICA
 # ==============================================================================
 
 - name: "hadoop : Verificar se o Hadoop já está instalado"
@@ -23,10 +23,6 @@
     remote_src: yes
   when: not hadoop_installed.stat.exists
 
-# ==============================================================================
-# 2. PERMISSÕES E LINKS
-# ==============================================================================
-
 - name: "hadoop : Criar link simbólico para o Hadoop"
   file:
     src: "{{ install_dir }}/hadoop-{{ hadoop_version }}"
@@ -34,23 +30,17 @@
     state: link
   become: yes
 
-- name: "hadoop : Ajustar dono da pasta do Hadoop de forma recursiva"
-  file:
-    path: "{{ install_dir }}/hadoop-{{ hadoop_version }}"
+# ==============================================================================
+# 2. CONFIGURAÇÃO DE AMBIENTE E TEMPLATES (Onde a mágica da RAM acontece)
+# ==============================================================================
+
+- name: "hadoop : Configurar hadoop-env.sh (Java e Memória)"
+  template:
+    src: hadoop-env.sh.j2
+    dest: "{{ install_dir }}/hadoop/etc/hadoop/hadoop-env.sh"
     owner: vagrant
     group: vagrant
-    recurse: yes
-  become: yes
-
-# ==============================================================================
-# 3. CONFIGURAÇÃO DE AMBIENTE E TEMPLATES
-# ==============================================================================
-
-- name: "hadoop : Fixar JAVA_HOME no hadoop-env.sh"
-  lineinfile:
-    path: "{{ install_dir }}/hadoop/etc/hadoop/hadoop-env.sh"
-    regexp: '^#? export JAVA_HOME='
-    line: 'export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64'
+    mode: '0755'
   become: yes
 
 - name: "hadoop : Configurar templates do Hadoop (XML)"
@@ -64,8 +54,16 @@
     - hdfs-site.xml
 
 # ==============================================================================
-# 4. CONFIGURAÇÃO DE SSH PASSWORDLESS
+# 3. PERMISSÕES E SSH PASSWORDLESS
 # ==============================================================================
+
+- name: "hadoop : Ajustar dono da pasta do Hadoop de forma recursiva"
+  file:
+    path: "{{ install_dir }}/hadoop-{{ hadoop_version }}"
+    owner: vagrant
+    group: vagrant
+    recurse: yes
+  become: yes
 
 - name: "hadoop : Gerar chave SSH para o usuário vagrant"
   command: ssh-keygen -t rsa -P "" -f /home/vagrant/.ssh/id_rsa
@@ -94,15 +92,23 @@
     key: "{{ public_key_content.stdout }}"
   become: yes
   
-- name: "hadoop : Adicionar localhost ao known_hosts"
-  shell: ssh-keyscan -H localhost > /home/vagrant/.ssh/known_hosts
+- name: "hadoop : Verificar se o localhost já está no known_hosts"
+  shell: "ssh-keygen -F localhost"
+  register: localhost_in_known_hosts
+  ignore_errors: yes
+  changed_when: false
   become_user: vagrant
 
+- name: "hadoop : Adicionar localhost ao known_hosts"
+  shell: "ssh-keyscan -H localhost >> /home/vagrant/.ssh/known_hosts"
+  become_user: vagrant
+  when: localhost_in_known_hosts.rc != 0
+
 # ==============================================================================
-# 5. DIRETÓRIOS E FORMATAÇÃO DO FILESYSTEM
+# 4. DIRETÓRIOS E FORMATAÇÃO DO FILESYSTEM
 # ==============================================================================
 
-- name: "hadoop : Criar diretórios de dados"
+- name: "hadoop : Criar diretórios de dados e logs"
   file:
     path: "{{ item }}"
     state: directory
@@ -110,30 +116,37 @@
     group: vagrant
     mode: '0755'
   loop:
+    - /opt/hadoop/logs
     - /opt/hadoop/data/namenode
     - /opt/hadoop/data/datanode
 
-- name: "hadoop : Formatar NameNode"
+- name: "hadoop : Verificar se o NameNode já foi formatado"
+  stat:
+    path: "/opt/hadoop/data/namenode/current/VERSION"
+  register: namenode_format_status
+
+- name: "hadoop : Formatar NameNode (Executado apenas na primeira vez)"
   shell: |
     export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-    {{ install_dir }}/hadoop/bin/hdfs namenode -format -nonInteractive
-  args:
-    creates: "/opt/hadoop/data/namenode/current"
+    {{ install_dir }}/hadoop/bin/hdfs namenode -format -force -nonInteractive
+  become: yes
   become_user: vagrant
+  when: not namenode_format_status.stat.exists
 
 # ==============================================================================
-# 6. INICIALIZAÇÃO DOS SERVIÇOS
+# 5. ATIVAÇÃO DO SERVIÇO VIA SYSTEMD (A "Chave Geral")
 # ==============================================================================
 
-- name: "hadoop : Verificar se NameNode está ativo via JPS"
-  command: jps
-  register: jps_output
-  changed_when: false
-  become_user: vagrant
+- name: "hadoop : Criar arquivo de serviço do Systemd"
+  template:
+    src: hadoop-hdfs.service.j2
+    dest: /etc/systemd/system/hadoop-hdfs.service
+  become: yes
 
-- name: "hadoop : Iniciar serviços do HDFS (start-dfs.sh)"
-  shell: |
-    export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-    {{ install_dir }}/hadoop/sbin/start-dfs.sh
-  become_user: vagrant
-  when: "'NameNode' not in jps_output.stdout"
+- name: "hadoop : Iniciar e habilitar o serviço no boot"
+  systemd:
+    name: hadoop-hdfs
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  become: yes

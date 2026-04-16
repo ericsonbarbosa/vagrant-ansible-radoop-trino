@@ -1,0 +1,22 @@
+[Unit]
+Description=Hive Metastore
+After=network.target hadoop-hdfs.service
+Wants=hadoop-hdfs.service
+
+[Service]
+User=vagrant
+Group=vagrant
+Type=simple
+Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+Environment=HADOOP_HOME={{ install_dir }}/hadoop
+Environment=HIVE_HOME={{ install_dir }}/hive
+Environment=HADOOP_HEAPSIZE=1024
+ExecStart={{ install_dir }}/hive/bin/hive --service metastore
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=hive-metastore
+
+[Install]
+WantedBy=multi-user.target

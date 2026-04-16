@@ -1,0 +1,7 @@
+[Service]
+Type=simple
+User=vagrant
+Group=vagrant
+ExecStart=/opt/hadoop/bin/hdfs namenode
+Restart=always
+RestartSec=10

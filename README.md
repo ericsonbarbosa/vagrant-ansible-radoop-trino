@@ -2,200 +2,104 @@
 
 ## 📌 Visão Geral
 
-Este projeto tem como objetivo provisionar uma infraestrutura local utilizando **Vagrant + VirtualBox**, servindo como base para um ambiente distribuído com Hadoop e Trino.
+Este projeto tem como objetivo provisionar uma infraestrutura local utilizando **Vagrant + VirtualBox**, servindo como base para um ambiente distribuído com Hadoop e Trino. A orquestração de software e a configuração do cluster são totalmente automatizadas via **Ansible**.
 
-Nesta primeira etapa, o foco é:
-
-* Subir duas máquinas virtuais
-* Configurar recursos (CPU, memória)
-* Garantir conectividade entre os nós
-* Preparar o ambiente para futuras automações (Ansible)
+**Nesta etapa, o projeto entrega:**
+* Provisionamento de máquinas virtuais com recursos isolados (CPU/RAM).
+* Automação de Infraestrutura como Código (IaC).
+* Configuração modular de serviços (Hadoop, Hive e Trino).
+* Resolução de conectividade segura entre Windows (Host) e WSL (Ansible Control Node).
 
 ---
 
-## 🧱 Arquitetura Inicial
+## 🧱 Arquitetura e Recursos
 
-| VM          | Hostname    | IP            | Função futura |
-| ----------- | ----------- | ------------- | ------------- |
-| hadoop-node | hadoop-node | 192.168.56.10 | Hadoop        |
-| trino-node  | trino-node  | 192.168.56.11 | Trino         |
+| VM          | Hostname    | IP Privado    | Função/Serviço         | Recursos         |
+| ----------- | ----------- | ------------- | ---------------------- | ---------------- |
+| hadoop-node | hadoop-node | 192.168.56.10 | Hadoop HDFS (Storage)  | 4GB RAM / 2 CPUs |
+| trino-node  | trino-node  | 192.168.56.11 | Trino Engine (Compute) | 4GB RAM / 2 CPUs |
 
 ---
 
 ## ⚙️ Pré-requisitos
 
-Antes de iniciar, é necessário ter instalado:
+* **VirtualBox & Vagrant:** Instalados e executados no Windows.
+* **WSL (Ubuntu/Linux):** Para execução do Ansible.
+* **Ansible:** Instalado no ambiente WSL.
 
-* VirtualBox
-* Vagrant
-* Sistema operacional host: Windows
-
-⚠️ Observação:
-
-> O Vagrant deve ser executado via PowerShell ou CMD (não via WSL).
+> ⚠️ **Nota:** O comando `vagrant up` deve ser executado no Windows (PowerShell/CMD). O script de automação `./setup.sh` deve ser executado dentro do WSL.
 
 ---
 
 ## 📁 Estrutura do Projeto
 
-```
+A organização segue as melhores práticas de modularização do Ansible (Roles):
+
+```text
 vagrant-ansible-hadoop-trino/
-├── Vagrantfile
-└── README.md
+├── ansible/
+│   ├── inventory/
+│   │   └── hosts.ini          # Inventário com IPs e chaves dinâmicas
+│   ├── roles/                 # Automação modularizada
+│   │   ├── common/            # Configurações base (Java, utilitários)
+│   │   ├── hadoop/            # Cluster HDFS (NameNode/DataNode)
+│   │   ├── hive/              # Hive Metastore e Catálogos
+│   │   └── trino/             # Motor de consulta distribuído
+│   ├── ansible.cfg            # Otimizações da execução Ansible
+│   └── playbook.yml           # Orquestrador principal
+├── tests/                     # Scripts de validação de saúde do cluster
+├── .gitignore                 # Exclusão de logs e chaves temporárias
+├── Vagrantfile                # Definição da infraestrutura física
+├── setup.sh                   # Script de boot e automação unificada
+└── README.md                  # Documentação técnica
 ```
 
----
+## 🚀 Como Iniciar
 
-## 🚀 Subindo a Infraestrutura
+Siga estes passos na ordem exata para garantir que a comunicação entre o Windows (Host) e o Linux (WSL) funcione corretamente.
 
-Execute no diretório do projeto:
-
+### 1. Provisionamento da Infraestrutura (Windows)
+Abra o **PowerShell** ou **CMD** na pasta raiz do projeto e execute:
 ```bash
 vagrant up
 ```
 
-### O que este comando faz:
+### 2. Configuração de Segurança SSH (WSL)
+O Ansible exige que as chaves privadas tenham permissões restritas. Como os arquivos no Windows (/mnt/c/) possuem permissão total, precisamos movê-los para o sistema de arquivos nativo do Linux.
 
-* Baixa a box `ubuntu/jammy64`
-* Cria duas VMs no VirtualBox
-* Define:
-
-  * 2 CPUs por VM
-  * 2GB de RAM por VM
-* Configura rede privada
-* Define hostname das máquinas
-
----
-
-## 🔐 Acesso às Máquinas Virtuais
-
-### Hadoop Node
-
+Abra seu terminal WSL na pasta do projeto e execute:
 ```bash
-vagrant ssh hadoop-node
+# Cria o diretório de chaves caso não exista
+mkdir -p ~/.ssh/
+
+# Copia as chaves geradas pelo Vagrant para a Home do Linux
+cp .vagrant/machines/hadoop-node/virtualbox/private_key ~/.ssh/hadoop_vagrant_key
+cp .vagrant/machines/trino-node/virtualbox/private_key ~/.ssh/trino_vagrant_key
+
+# Define permissão de leitura apenas para o seu usuário (Obrigatório para SSH)
+chmod 600 ~/.ssh/*_vagrant_key
 ```
 
----
+### 3. Validação e Execução (WSL)
+Ainda no terminal WSL, valide se o Ansible consegue "enxergar" as máquinas antes de rodar o setup:
 
-### Trino Node
-
+Teste de Ping: *Caso uma das VMs falhe, basta reinicia-la e tentar novamente*
 ```bash
-vagrant ssh trino-node
+ansible all -m ping -i ansible/inventory/hosts.ini
 ```
 
----
+Se ambos os nós retornarem "pong", a conexão está perfeita.
 
-## 🧪 Validação do Ambiente
-
-Após acessar cada VM, execute:
-
+Executar Provisionamento:
 ```bash
-hostname
-free -h
-nproc
+./setup.sh
 ```
 
-### Resultado esperado:
+### Links Úteis
+Download do Trino e Hive das versões utilizadas:
 
-* Hostname correto
-* 2GB de memória disponível
-* 2 CPUs provisionadas
+ansible/roles/hive/files/
+Rive: https://archive.apache.org/dist/hive/hive-3.1.3/apache-hive-3.1.3-bin.tar.gz
 
----
-
-## 🌐 Teste de Conectividade
-
-### Do Hadoop para Trino:
-
-```bash
-ping 192.168.56.11
-```
-
-### Do Trino para Hadoop:
-
-```bash
-ping 192.168.56.10
-```
-
-✔ Se houver resposta, a comunicação entre os nós está funcionando.
-
----
-
-## 📦 O que já foi provisionado automaticamente
-
-Ao executar `vagrant up`, o ambiente já entrega:
-
-* Sistema operacional Ubuntu Server
-* Rede privada entre as VMs
-* Acesso SSH configurado
-* Sincronização de pasta (/vagrant)
-* Estrutura pronta para automação
-
----
-
-## ⚠️ Observações
-
-### Guest Additions
-
-Pode aparecer aviso de versão diferente do VirtualBox:
-
-> Isso não impacta o funcionamento inicial do projeto.
-
----
-
-### Portas SSH
-
-As portas são atribuídas automaticamente:
-
-* hadoop-node → 2222
-* trino-node → 2200
-
----
-
-## 🧹 Comandos úteis
-
-Parar VMs:
-
-```bash
-vagrant halt
-```
-
-Destruir ambiente:
-
-```bash
-vagrant destroy
-```
-
-Reiniciar:
-
-```bash
-vagrant reload
-```
-
----
-
-## 🔮 Próximos Passos
-
-Este projeto será evoluído com:
-
-* Provisionamento com Ansible
-* Instalação automatizada de Java
-* Configuração de SSH entre nós
-* Setup de cluster Hadoop
-* Integração com Trino
-
----
-
-## 📚 Objetivo do Projeto
-
-Este laboratório tem como finalidade:
-
-* Aprendizado prático de infraestrutura como código
-* Simulação de ambiente distribuído local
-* Construção de portfólio técnico
-
----
-
-## 👨‍💻 Autor
-
-Projeto em evolução contínua 🚀
+ansible/roles/trino/files/
+Trino: https://repo1.maven.org/maven2/io/trino/trino-server/442/trino-server-442.tar.gz

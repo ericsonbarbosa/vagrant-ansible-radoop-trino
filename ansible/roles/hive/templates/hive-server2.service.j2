@@ -1,0 +1,15 @@
+[Unit]
+Description=HiveServer2 Service
+After=hadoop-hdfs.service
+
+[Service]
+Type=simple
+User=vagrant
+Group=vagrant
+Environment=JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+Environment=HADOOP_HOME=/opt/hadoop
+ExecStart=/opt/hive/bin/hive --service hiveserver2
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

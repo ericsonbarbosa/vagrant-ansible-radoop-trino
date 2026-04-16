@@ -1,0 +1,15 @@
+#!/bin/bash
+
+# Java Home
+export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+
+# Configurações de Memória para estabilidade da UI e JMX
+# O NameNode ganha 2GB, o DataNode ganha 1GB.
+export HADOOP_NAMENODE_OPTS="-Xms1024m -Xmx2048m $HADOOP_NAMENODE_OPTS"
+export HADOOP_DATANODE_OPTS="-Xms512m -Xmx1024m $HADOOP_DATANODE_OPTS"
+
+# Previne erros de conexão e timeouts em ambientes virtualizados
+export HADOOP_OPTS="$HADOOP_OPTS -Djava.net.preferIPv4Stack=true"
+
+# Caminho dos logs
+export HADOOP_LOG_DIR={{ install_dir }}/hadoop/logs
