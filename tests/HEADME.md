@@ -14,11 +14,11 @@ Este nó contém o **HDFS** e o **Hive Server/Metastore**.
     ```bash
     vagrant ssh hadoop-node
     ```
-* **Acesso ao Hive (via Beeline CLI):**
+* **Validar se o Metastore está rodando na 9083 e pronto para receber o Trino:**
     ```bash
-    beeline -u jdbc:hive2://localhost:10000 -n vagrant
+    sudo netstat -nlpt | grep 9083
     ```
-    *Nota: O Beeline é o cliente SQL padrão do Hive. O parâmetro `-n vagrant` define o usuário da sessão.*
+    *Nota: O comando deve retornar que está ecutando: tcp 0.0.0.0:9083*
 
 ### 🔱 Trino-Node (Motor de Consulta)
 Este nó é responsável pela execução de queries de alta performance sobre os dados do Hadoop.
@@ -35,35 +35,26 @@ Este nó é responsável pela execução de queries de alta performance sobre os
 
 ---
 
-## 2. Cenários de Teste de Integração
-
-Siga esta sequência lógica para validar se os dados estão "viajando" corretamente entre as camadas.
-
-### ✅ Passo A: Escrita no Hive (Origem)
-**Objetivo:** Criar um dado no "chão de fábrica" e registrar no catálogo. No **Beeline**, execute:
-
-```sql
--- 1. Criar a tabela no formato Parquet
-CREATE TABLE usuarios_hadoop (id INT, nome STRING) STORED AS PARQUET;
-
--- 2. Inserir um registro de teste
-INSERT INTO usuarios_hadoop VALUES (1, 'Ericson - Origem Hive');
-
--- 3. Verificar persistência local
-SELECT * FROM usuarios_hadoop;
-```
-
-### ✅ Passo B: Consulta e Escrita via Trino (Federação)
+### ✅ Passo A: Escrita e Consulta via Trino
 Objetivo: Validar se o Trino consegue ler do Hive e criar novos arquivos no HDFS. No Trino CLI, execute:
 
 ```sql
--- 1. Consultar o dado que foi criado originalmente no Hive
-SELECT * FROM hive.default.usuarios_hadoop;
+-- 1. Criar um schema (banco de dados) no catálogo do Hive
+CREATE SCHEMA hive.lab_ed;
 
--- 2. Criar uma nova tabela (CTAS) usando o motor do Trino
-CREATE TABLE hive.default.usuarios_trino AS 
-SELECT id, nome, 'Criado via Trino' as origem 
-FROM hive.default.usuarios_hadoop;
+-- 2. Criar a tabela
+CREATE TABLE hive.lab_ed.usuarios (
+    id BIGINT, nome VARCHAR, cargo VARCHAR
+) WITH (format = 'PARQUET');
+
+-- 3. Inserir os dados (Este é o momento da verdade!)
+INSERT INTO lab_ed.usuarios VALUES (1, 'Ericson', 'Data Engineer'), (2, 'Ana Vitória', 'Little Artist');
+
+-- 4. Consultar os dados
+SELECT * FROM lab_ed.usuarios;
+
+-- 5. Excluir schema para recomeçar os testes
+DROP SCHEMA IF EXISTS hive.lab_ed CASCADE;
 ```
 
 ### ✅ Passo C: Validação Física no HDFS

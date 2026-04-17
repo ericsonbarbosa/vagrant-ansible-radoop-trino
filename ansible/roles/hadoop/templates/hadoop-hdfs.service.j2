@@ -1,7 +1,27 @@
+[Unit]
+Description=Hadoop Distributed File System
+After=network.target
+
 [Service]
-Type=simple
+# Type=forking é obrigatório aqui, pois o start-dfs.sh gera processos filhos em background
+Type=forking
 User=vagrant
 Group=vagrant
-ExecStart=/opt/hadoop/bin/hdfs namenode
-Restart=always
+
+# O Systemd não lê o /etc/profile, então precisamos injetar o JAVA_HOME aqui também
+Environment="JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64"
+Environment="HADOOP_HOME=/opt/hadoop"
+
+# Os scripts que sobem e descem a orquestra toda
+ExecStart=/opt/hadoop/sbin/start-dfs.sh
+ExecStop=/opt/hadoop/sbin/stop-dfs.sh
+
+# Impede o systemd de matar o NameNode e o DataNode
+KillMode=none
+RemainAfterExit=yes
+
+Restart=on-failure
 RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

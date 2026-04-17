@@ -1,24 +1,24 @@
 Vagrant.configure("2") do |config|
-
-  # Box base (Ubuntu Server)
   config.vm.box = "ubuntu/jammy64"
 
   # VM 1 - Hadoop
   config.vm.define "hadoop-node" do |hadoop|
     hadoop.vm.hostname = "hadoop-node"
-
+    hadoop.vm.manage_hosts = false 
+    hadoop.vm.network "private_network", ip: "192.168.56.10"
+    
     hadoop.vm.provider "virtualbox" do |vb|
       vb.name = "hadoop-node"
       vb.memory = 4096
       vb.cpus = 2
     end
-
-    hadoop.vm.network "private_network", ip: "192.168.56.10"
   end
 
   # VM 2 - Trino
   config.vm.define "trino-node" do |trino|
     trino.vm.hostname = "trino-node"
+    trino.vm.manage_hosts = false
+    trino.vm.network "private_network", ip: "192.168.56.11"
     trino.vm.network "forwarded_port", guest: 8080, host: 8080
     
     trino.vm.provider "virtualbox" do |vb|
@@ -26,8 +26,5 @@ Vagrant.configure("2") do |config|
       vb.memory = 4096
       vb.cpus = 2
     end
-
-    trino.vm.network "private_network", ip: "192.168.56.11"
   end
-
 end

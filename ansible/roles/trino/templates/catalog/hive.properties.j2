@@ -1,3 +1,24 @@
 connector.name=hive
 hive.metastore.uri=thrift://192.168.56.10:9083
 hive.config.resources=/opt/hadoop/etc/hadoop/core-site.xml,/opt/hadoop/etc/hadoop/hdfs-site.xml
+
+# Segurança e Identidade
+hive.hdfs.impersonation.enabled=true
+hive.hdfs.wire-encryption.enabled=false
+
+# Formato e Performance
+hive.storage-format=PARQUET
+hive.compression-codec=SNAPPY
+hive.collect-column-statistics-on-write=false
+hive.ignore-corrupted-statistics=true
+
+# Estabilidade (Ajustado para Trino 442)
+hive.non-managed-table-writes-enabled=true
+
+# Correção do Timeout (Substituindo o metastore-timeout antigo)
+hive.metastore.thrift.client.connect-timeout=1m
+hive.metastore.thrift.client.read-timeout=1m
+
+# Limites Operacionais (Ajustado para evitar erros de 'property not used')
+hive.max-partitions-per-scan=10000
+hive.target-max-file-size=64MB

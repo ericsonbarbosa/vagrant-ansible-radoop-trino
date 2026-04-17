@@ -95,6 +95,12 @@ Executar Provisionamento:
 ./setup.sh
 ```
 
+### Comando Úteis
+Executar Playbooks via TAGs
+```bash
+ansible-playbook -i ansible/inventory/hosts.ini ansible/playbook.yml --tags "trino"
+```
+
 ### Links Úteis
 Download do Trino e Hive das versões utilizadas:
 

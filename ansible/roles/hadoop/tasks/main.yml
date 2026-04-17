@@ -92,17 +92,17 @@
     key: "{{ public_key_content.stdout }}"
   become: yes
   
-- name: "hadoop : Verificar se o localhost já está no known_hosts"
-  shell: "ssh-keygen -F localhost"
-  register: localhost_in_known_hosts
-  ignore_errors: yes
-  changed_when: false
+- name: "hadoop : Ignorar StrictHostKeyChecking (evita prompt no start-dfs.sh)"
+  copy:
+    dest: /home/vagrant/.ssh/config
+    content: |
+      Host *
+        StrictHostKeyChecking no
+        UserKnownHostsFile /dev/null
+    owner: vagrant
+    group: vagrant
+    mode: '0600'
   become_user: vagrant
-
-- name: "hadoop : Adicionar localhost ao known_hosts"
-  shell: "ssh-keyscan -H localhost >> /home/vagrant/.ssh/known_hosts"
-  become_user: vagrant
-  when: localhost_in_known_hosts.rc != 0
 
 # ==============================================================================
 # 4. DIRETÓRIOS E FORMATAÇÃO DO FILESYSTEM

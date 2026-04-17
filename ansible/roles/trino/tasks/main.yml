@@ -35,6 +35,12 @@
     dest: "{{ install_dir }}/trino"
     state: link
 
+- name: "trino : Otimizar RAM removendo plugins desnecessários"
+  shell: |
+    cd {{ install_dir }}/trino/plugin
+    ls -d */ | grep -vE 'hive/|tpch/|memory/' | xargs rm -rf
+  become: yes
+
 - name: "trino : Instalar TRINO CLI (Comando Global)"
   get_url:
     url: "https://repo1.maven.org/maven2/io/trino/trino-cli/{{ trino_version }}/trino-cli-{{ trino_version }}-executable.jar"
@@ -74,6 +80,12 @@
     - { src: 'catalog/hive.properties.j2', dest: '{{ install_dir }}/trino/etc/catalog/hive.properties' }
     - { src: 'hadoop/core-site.xml.j2', dest: '/opt/hadoop/etc/hadoop/core-site.xml' }
     - { src: 'hadoop/hdfs-site.xml.j2', dest: '/opt/hadoop/etc/hadoop/hdfs-site.xml' }
+  notify: restart trino
+
+- name: "hive : Garantir permissão total no Warehouse para o Trino"
+  shell: "/opt/hadoop/bin/hdfs dfs -chmod -R 777 /user/hive/warehouse"
+  become_user: vagrant
+  delegate_to: hadoop-node
 
 # ==============================================================================
 # 3. GERENCIAMENTO PELO SYSTEMD
