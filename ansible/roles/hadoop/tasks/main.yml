@@ -105,6 +105,19 @@
   become_user: vagrant
 
 # ==============================================================================
+# 3.1 CONFIGURAÇÃO DE VARIÁVEIS DE AMBIENTE (PATH)
+# ==============================================================================
+
+- name: "hadoop : Configurar variáveis de ambiente no .bashrc do vagrant"
+  lineinfile:
+    path: "/home/vagrant/.bashrc"
+    # Adiciona o PATH apenas se não existir para evitar duplicatas
+    line: "export PATH=$PATH:{{ install_dir }}/hadoop/bin:{{ install_dir }}/hadoop/sbin"
+    state: present
+  become: yes
+  become_user: vagrant
+
+# ==============================================================================
 # 4. DIRETÓRIOS E FORMATAÇÃO DO FILESYSTEM
 # ==============================================================================
 

@@ -4,7 +4,6 @@ Vagrant.configure("2") do |config|
   # VM 1 - Hadoop
   config.vm.define "hadoop-node" do |hadoop|
     hadoop.vm.hostname = "hadoop-node"
-    hadoop.vm.manage_hosts = false 
     hadoop.vm.network "private_network", ip: "192.168.56.10"
     
     hadoop.vm.provider "virtualbox" do |vb|
@@ -17,7 +16,6 @@ Vagrant.configure("2") do |config|
   # VM 2 - Trino
   config.vm.define "trino-node" do |trino|
     trino.vm.hostname = "trino-node"
-    trino.vm.manage_hosts = false
     trino.vm.network "private_network", ip: "192.168.56.11"
     trino.vm.network "forwarded_port", guest: 8080, host: 8080
     

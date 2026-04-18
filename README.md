@@ -95,17 +95,42 @@ Executar Provisionamento:
 ./setup.sh
 ```
 
-### Comando Úteis
+## Comandos Úteis
 Executar Playbooks via TAGs
 ```bash
+# Common
+ansible-playbook -i ansible/inventory/hosts.ini ansible/playbook.yml --tags "common"
+
+# Hadoop
+ansible-playbook -i ansible/inventory/hosts.ini ansible/playbook.yml --tags "hadoop"
+
+# Trino
 ansible-playbook -i ansible/inventory/hosts.ini ansible/playbook.yml --tags "trino"
 ```
 
-### Links Úteis
+## Links Úteis
 Download do Trino e Hive das versões utilizadas:
 
-ansible/roles/hive/files/
+ansible/roles/hive/files/  
 Rive: https://archive.apache.org/dist/hive/hive-3.1.3/apache-hive-3.1.3-bin.tar.gz
 
-ansible/roles/trino/files/
+ansible/roles/trino/files/  
 Trino: https://repo1.maven.org/maven2/io/trino/trino-server/442/trino-server-442.tar.gz
+
+## Subir e Destruir ambiente via Vagrant
+Requisitos:  
+1 - Estar no terminal que o Vagrant está instalado.  
+2 - Estar dentro da pasta onde o Vagrantfile está.  
+```bash
+# Provisionar VMs
+vagrant up
+
+# Atualizar VM após acrescimo de memória ou processador
+vagrant reload hadoop-node
+
+# Conectar via SSH se necessário
+vagrant ssh hadoop-node
+
+# Destruir ambiente
+vagrant destroy -f
+```
