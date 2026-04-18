@@ -145,24 +145,31 @@ vagrant destroy -f
 
 ### Diagrama de Implantação (Deployment)
 ```mermaid
-deploymentDiagram
-    node "VM: hadoop-node\n192.168.56.10" {
-        artifact "HDFS NameNode" as NN
-        artifact "HDFS DataNode" as DN
-        artifact "Hive Metastore (Derby)" as HM
-        artifact "HiveServer2" as HS2
-    }
-    
-    node "VM: trino-node\n192.168.56.11" {
-        artifact "Trino Coordinator" as TC
-        artifact "Trino Worker" as TW
-        artifact "Trino CLI" as CLI
-    }
+flowchart TB
+    Projeto[Projeto Hadoop + Trino<br/>Vagrant + Ansible]
 
-    NN --> DN : HDFS heartbeat (local)
-    TC --> HM : Thrift (port 9083)
-    TC --> NN : HDFS RPC (port 9000)
-    TW --> DN : Leitura de blocos (port 9866)
+    Projeto --> Objetivo[Objetivo: Provisionar Big Data local com IaC]
+
+    Objetivo --> VMs[VMs]
+    VMs --> HadoopNode[hadoop-node 192.168.56.10]
+    VMs --> TrinoNode[trino-node 192.168.56.11]
+
+    HadoopNode --> HDFS[HDFS NameNode + DataNode]
+    HadoopNode --> Hive[Hive Metastore + HiveServer2]
+
+    TrinoNode --> Trino[Trino Coordinator + Worker + CLI]
+
+    Projeto --> Ferramentas[Ferramentas]
+    Ferramentas --> Vagrant
+    Ferramentas --> VirtualBox
+    Ferramentas --> Ansible
+    Ferramentas --> Git
+
+    Projeto --> Fluxo[Fluxo de consulta]
+    Fluxo --> F1[Cliente → Trino :8080]
+    F1 --> F2[Trino → Metastore :9083]
+    F2 --> F3[Trino → NameNode :9000]
+    F3 --> F4[Trino → DataNode leitura de blocos]
 ```
 
 ## Diagrama de Atividades (Pipeline Ansible de Provisionamento)
