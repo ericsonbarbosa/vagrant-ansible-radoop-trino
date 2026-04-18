@@ -134,3 +134,36 @@ vagrant ssh hadoop-node
 # Destruir ambiente
 vagrant destroy -f
 ```
+### Diagrama de Caso de Uso
+![alt text](img/caso_de_uso.png)
+
+## Diagrama de Rede (Comunicação e Portas)
+![alt text](img/diagrama_de_rede.png)
+
+## Diagrama de Sequência (Consulta SQL no Trino)
+![alt text](img/diagrama_de_sequencia.png)
+
+### Diagrama de Implantação (Deployment)
+```mermaid
+deploymentDiagram
+    node "VM: hadoop-node\n192.168.56.10" {
+        artifact "HDFS NameNode" as NN
+        artifact "HDFS DataNode" as DN
+        artifact "Hive Metastore (Derby)" as HM
+        artifact "HiveServer2" as HS2
+    }
+    
+    node "VM: trino-node\n192.168.56.11" {
+        artifact "Trino Coordinator" as TC
+        artifact "Trino Worker" as TW
+        artifact "Trino CLI" as CLI
+    }
+
+    NN --> DN : HDFS heartbeat (local)
+    TC --> HM : Thrift (port 9083)
+    TC --> NN : HDFS RPC (port 9000)
+    TW --> DN : Leitura de blocos (port 9866)
+```
+
+## Diagrama de Atividades (Pipeline Ansible de Provisionamento)
+![alt text](img/diagrama_de_atividade_pipeline.png)
