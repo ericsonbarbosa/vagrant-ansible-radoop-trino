@@ -134,16 +134,9 @@ vagrant ssh hadoop-node
 # Destruir ambiente
 vagrant destroy -f
 ```
-### Diagrama de Caso de Uso
-![alt text](img/caso_de_uso.png)
+## Diagramas
 
-## Diagrama de Rede (Comunicação e Portas)
-![alt text](img/diagrama_de_rede.png)
-
-## Diagrama de Sequência (Consulta SQL no Trino)
-![alt text](img/diagrama_de_sequencia.png)
-
-### Diagrama de Implantação (Deployment)
+### Mapa Mental
 ```mermaid
 flowchart TB
     Projeto[Projeto Hadoop + Trino<br/>Vagrant + Ansible]
@@ -172,5 +165,98 @@ flowchart TB
     F3 --> F4[Trino → DataNode leitura de blocos]
 ```
 
-## Diagrama de Atividades (Pipeline Ansible de Provisionamento)
-![alt text](img/diagrama_de_atividade_pipeline.png)
+### Diagrama de Caso de Uso
+```mermaid
+flowchart LR
+    DevOps(DevOps)
+    EngDados(Engenheiro de Dados)
+    Analista(Cientista/Analista)
+    Monitor(Sistema de Monitoramento)
+
+    subgraph Plataforma["Plataforma Big Data (HDFS + Hive + Trino)"]
+        UC1[Provisionar VMs<br/>Vagrant up]
+        UC2[Configurar serviços<br/>com Ansible]
+        UC3[Executar playbooks<br/>por tag]
+        UC4[Gerenciar arquivos<br/>no HDFS]
+        UC5[Executar consultas<br/>SQL distribuídas]
+        UC6[Criar/gerenciar<br/>tabelas Hive]
+        UC7[Monitorar saúde<br/>do cluster]
+        UC8[Documentar<br/>infraestrutura]
+    end
+
+    DevOps --> UC1
+    DevOps --> UC2
+    DevOps --> UC3
+    DevOps --> UC8
+    EngDados --> UC4
+    EngDados --> UC6
+    Analista --> UC5
+    Analista --> UC4
+    Monitor --> UC7
+    DevOps --> UC7
+```
+
+### Diagrama de Implantação (Deployment)
+```mermaid
+flowchart TD
+    subgraph "VM: hadoop-node (192.168.56.10)"
+        NN["HDFS NameNode"]
+        DN["HDFS DataNode"]
+        HM["Hive Metastore (Derby)"]
+        HS2["HiveServer2"]
+    end
+
+    subgraph "VM: trino-node (192.168.56.11)"
+        TC["Trino Coordinator"]
+        TW["Trino Worker"]
+        CLI["Trino CLI"]
+    end
+
+    NN --> DN
+    TC -->|Thrift :9083| HM
+    TC -->|HDFS RPC :9000| NN
+    TW -->|Leitura de blocos :9866| DN
+```
+
+### Diagrama de Sequência (Consulta SQL no Trino)
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant T as Trino (192.168.56.11:8080)
+    participant M as Hive Metastore (192.168.56.10:9083)
+    participant N as HDFS NameNode (192.168.56.10:9000)
+    participant D as HDFS DataNode (192.168.56.10)
+
+    C->>T: 1. SQL Query
+    T->>M: 2. Schema / localização
+    M-->>T: 3. Caminho HDFS
+    T->>N: 4. Localizar blocos
+    N-->>T: 5. Endereço do DataNode
+    T->>D: 6. Ler blocos
+    D-->>T: 7. Dados brutos
+    T-->>C: 8. Resultado
+```
+
+### Diagrama de Atividades (Pipeline Ansible de Provisionamento)
+```mermaid
+flowchart TD
+    A[🚀 vagrant up] --> B[Cria VMs: hadoop-node / trino-node]
+    B --> C[Ansible executa playbook site.yml]
+
+    C --> D[Role: hadoop]
+    D --> D1[Instala HDFS]
+    D1 --> D2[Formata NameNode]
+    D2 --> D3[Inicia hadoop-hdfs.service]
+
+    D3 --> E[Role: hive]
+    E --> E1[Instala Hive]
+    E1 --> E2[Configura metastore Derby]
+    E2 --> E3[Inicia hive-metastore + hive-server2]
+
+    E3 --> F[Role: trino]
+    F --> F1[Instala Trino server + CLI]
+    F1 --> F2[Configura conector Hive]
+    F2 --> F3[Inicia trino.service]
+
+    F3 --> G[✅ Cluster pronto]
+```
