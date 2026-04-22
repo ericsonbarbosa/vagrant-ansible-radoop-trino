@@ -53,7 +53,10 @@ INSERT INTO lab_ed.usuarios VALUES (1, 'Ericson', 'Data Engineer'), (2, 'Ana Vit
 -- 4. Consultar os dados
 SELECT * FROM lab_ed.usuarios;
 
--- 5. Excluir schema para recomeçar os testes
+-- 5. Visualizar todas as tabelas criadas dento do lab_ed.db
+SHOW TABLES FROM lab_ed;
+
+-- 6. Excluir schema para recomeçar os testes
 DROP SCHEMA IF EXISTS hive.lab_ed CASCADE;
 ```
 
